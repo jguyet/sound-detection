@@ -4,6 +4,18 @@ var pcm = require('pcm-boilerplate');
 var qmean = require('compute-qmean');
 var mean = require('compute-incrmmean');
 
+function multiplBufJoin(bufs) {
+    let buff = undefined;
+    for (let i = 0; i < bufs.length; i++) {
+        if (buff == undefined) {
+            buff = bufs[i];
+        } else {
+            buff = bufjoin([buff, bufs[i]]);
+        }
+    }
+    return buff;
+}
+
 function bufjoin(bufs){
     let aout = new Float32Array(bufs[0].length + bufs[1].length);
     aout.set(bufs[0], 0);
@@ -19,6 +31,7 @@ function NoiseDetection(options, callback) {
     function toDecibel(rms) {
         return rms*1000;
     }
+    var save10Lastblocks = [];
 
     function processBlock() {
         var block = streamDecoder.read();
@@ -32,6 +45,16 @@ function NoiseDetection(options, callback) {
             rms = qmean(samples);
             rmsAvg(rms);
             dB = toDecibel(rms);
+
+            if (save10Lastblocks == undefined) {
+                save10Lastblocks = [block[0]];
+            } else {
+                if (save10Lastblocks.length > 40) {
+                    save10Lastblocks = save10Lastblocks.slice(1);
+                }
+                save10Lastblocks.push(block[0]);
+            }
+
             const pieceSoundAverage = toDecibel(rmsAvg());
             if (dB > pieceSoundAverage + options.triggerLevel) {
                 if (record == undefined) {
@@ -41,7 +64,7 @@ function NoiseDetection(options, callback) {
                         avg: mean(100),
                         start: true,
                         end: false,
-                        blocks: block[0]
+                        blocks: multiplBufJoin(save10Lastblocks)//block[0]
                     };
                 } else {
                     record.avg(rms);
